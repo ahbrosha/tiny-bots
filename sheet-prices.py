@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
-
-from urllib.error import HTTPError
 from bs4 import BeautifulSoup
 from apiclient import discovery, errors
 from google.oauth2 import service_account
 
 import argparse
-import random
+import datetime
 import requests
-import time
 import logging
 import os
 
@@ -24,6 +21,14 @@ ALL_RARITIES = {
     'Starfoil':    'Starfoil',
     'Super Rare':  'Super_Rare',
     'Ultra Rare':  'Ultra_Rare'
+}
+
+COLOMS = {
+    'name': 'A',
+    'serial': 'B',
+    'rarity': 'C',
+    'date': 'E',
+    'price': 'F'
 }
 
 parser = argparse.ArgumentParser()
@@ -79,19 +84,35 @@ if __name__ == '__main__':
 
     try:
         service = discovery.build('sheets', 'v4', credentials=creds)
+        offset = 2  # exclude header
 
         # Call the Sheets API
         sheet = service.spreadsheets()
-        result = sheet.values().get(spreadsheetId=GOOGLE_SPREADSHEET_ID, range='Tabellenblatt1!A1:D5').execute()
+        result = sheet.values().get(spreadsheetId=GOOGLE_SPREADSHEET_ID, range=f'Philipp!A{offset}:G').execute()
         values = result.get('values', [])
 
-        if not values:
-            print('No data found.')
-
-        print('Name, Major:')
+        # ['name', 'serial', 'rarity', 'count', 'date', 'price']
+        index = offset - 1
         for row in values:
-            # Print columns A and E, which correspond to indices 0 and 4.
-            print('%s, %s' % (row[0], row[1]))
+            index = index + 1
+            details = get_card_details(row[1], row[2])
+            if details is None:
+                print(f'Skipping {row[0]}({row[1]})')
+                continue
+            update_values = [[str(datetime.datetime.now()), details['price']]]
+
+            body = {
+                'values': update_values,
+            }
+
+            result = service.spreadsheets().values().update(
+                spreadsheetId=GOOGLE_SPREADSHEET_ID, 
+                range=f'Philipp!{COLOMS["date"]}{index}',
+                valueInputOption='RAW',
+                body=body).execute()
+            print(f'Updated price for {row[0]}({row[1]}) to {details["price"]}')
+
+            
+
     except errors.HttpError as err:
         print(err)
-
